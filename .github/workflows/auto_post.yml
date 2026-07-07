@@ -1,0 +1,31 @@
+name: Tự động kiểm tra & đăng bài Fanpage
+run-name: Kiểm tra lịch đăng bài
+
+# Chạy mỗi 5 phút theo giờ Việt Nam (chuyển sang UTC)
+on:
+  schedule:
+    - cron: '*/5 16-23 * * *'   # Từ 0h-7h VN = 16h-23h UTC
+    - cron: '*/5 0-16 * * *'    # Từ 8h-23h VN = 0h-16h UTC
+  workflow_dispatch:             # Cho phép nhấn nút chạy thử thủ công
+
+jobs:
+  auto-post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tải mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài Node.js
+        uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Cài thư viện
+        working-directory: ./scheduler
+        run: npm install
+
+      - name: Chạy script đăng bài
+        working-directory: ./scheduler
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node run.js

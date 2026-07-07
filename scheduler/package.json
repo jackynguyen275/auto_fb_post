@@ -1,0 +1,9 @@
+{
+    "name": "auto-fb-scheduler",
+    "version": "1.0.0",
+    "dependencies": {
+        "firebase-admin": "^12.1.0",
+        "axios": "^1.6.8",
+        "@google/generative-ai": "^0.7.1"
+    }
+}

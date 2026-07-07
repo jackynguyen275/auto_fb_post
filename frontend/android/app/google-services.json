@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "178454095150",
+    "project_id": "autofbpost1",
+    "storage_bucket": "autofbpost1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:178454095150:android:3e173ed3498cc2396206bf",
+        "android_client_info": {
+          "package_name": "com.example.auto_fb_post"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXCSc8x5Jb6JjrUBtLHn8N6Z-4xbdLfvQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
