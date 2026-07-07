@@ -1,12 +1,11 @@
 name: Tự động kiểm tra & đăng bài Fanpage
 run-name: Kiểm tra lịch đăng bài
 
-# Chạy mỗi 5 phút theo giờ Việt Nam (chuyển sang UTC)
 on:
   schedule:
-    - cron: '*/5 16-23 * * *'   # Từ 0h-7h VN = 16h-23h UTC
-    - cron: '*/5 0-16 * * *'    # Từ 8h-23h VN = 0h-16h UTC
-  workflow_dispatch:             # Cho phép nhấn nút chạy thử thủ công
+    - cron: '*/5 16-23 * * *'   # 0h-7h VN
+    - cron: '*/5 0-16 * * *'    # 8h-23h VN
+  workflow_dispatch:
 
 jobs:
   auto-post:
@@ -17,11 +16,13 @@ jobs:
 
       - name: Cài Node.js
         uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with: 
+          node-version: '22' # Đổi sang phiên bản mới, không còn cảnh báo
+          cache: 'npm'
 
       - name: Cài thư viện
         working-directory: ./scheduler
-        run: npm install
+        run: npm ci # Cài chính xác theo package-lock.json nếu có
 
       - name: Chạy script đăng bài
         working-directory: ./scheduler
