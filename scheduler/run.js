@@ -4,28 +4,30 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 console.log("🔹 Bắt đầu khởi tạo...");
 
-// Kiểm tra biến môi trường bắt buộc
+// Kiểm tra biến môi trường
 if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-    console.error("❌ Thiếu biến FIREBASE_SERVICE_ACCOUNT trong Secrets!");
+    console.error("❌ Thiếu biến FIREBASE_SERVICE_ACCOUNT!");
     process.exit(1);
 }
 if (!process.env.GEMINI_API_KEY) {
-    console.error("❌ Thiếu biến GEMINI_API_KEY trong Secrets!");
+    console.error("❌ Thiếu biến GEMINI_API_KEY!");
     process.exit(1);
 }
 
-// Khởi tạo Firebase có bắt lỗi
+// Khởi tạo Firebase
 try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: "https://autofbpost1-default-rtdb.asia-southeast1.firebasedatabase.app"
+    });
     console.log("✅ Khởi tạo Firebase thành công");
 } catch (err) {
     console.error("❌ Lỗi khởi tạo Firebase:", err.message);
-    console.error("💡 Kiểm tra lại định dạng JSON của khóa trong Secrets nhé!");
     process.exit(1);
 }
 
-const db = admin.firestore();
+const db = admin.database();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
@@ -34,70 +36,69 @@ async function main() {
     console.log(`\n🔹 Kiểm tra bài cần đăng lúc: ${now.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`);
 
     try {
-        const snapshot = await db.collection('scheduled_posts')
-            .where('scheduledAt', '<=', now.toISOString())
-            .where('isPosted', '==', false)
-            .limit(10)
-            .get();
+        const snapshot = await db.ref('scheduled_posts')
+            .orderByChild('scheduledAt')
+            .endAt(now.toISOString())
+            .once('value');
 
-        if (snapshot.empty) {
+        if (!snapshot.exists()) {
             console.log("✅ Không có bài nào cần đăng, kết thúc.");
             return;
         }
 
-        console.log(`📋 Tìm thấy ${snapshot.size} bài cần xử lý`);
+        const posts = snapshot.val();
+        const needProcess = Object.entries(posts).filter(([_, post]) => !post.isPosted);
+        if (needProcess.length === 0) {
+            console.log("✅ Tất cả bài đã đăng, kết thúc.");
+            return;
+        }
 
-        for (const doc of snapshot.docs) {
-            const data = doc.data();
-            console.log(`\n🔹 Xử lý bài ID: ${doc.id}`);
+        console.log(`📋 Tìm thấy ${needProcess.length} bài cần xử lý`);
 
+        for (const [postId, data] of needProcess) {
             try {
-                // Lấy thông tin đầy đủ từ dự án nếu thiếu
+                console.log(`\n🔹 Xử lý bài ID: ${postId}`);
+
+                // Lấy thông tin đầy đủ
                 let projectInfo = data;
                 if (!data.pageId || !data.pageToken) {
-                    console.log("🔹 Thiếu thông tin Fanpage, lấy từ dự án...");
-                    const projectSnap = await db.collection('projects').doc(data.projectId).get();
-                    if (!projectSnap.exists) throw new Error("Không tìm thấy thông tin dự án");
-                    projectInfo = { ...projectSnap.data(), ...data };
+                    console.log("🔹 Lấy thông tin dự án...");
+                    const projSnap = await db.ref(`projects/${data.projectId}`).once('value');
+                    if (!projSnap.exists()) throw new Error("Không tìm thấy dự án");
+                    projectInfo = { ...projSnap.val(), ...data };
                 }
 
                 // Tạo nội dung AI
-                console.log("🔹 Đang tạo nội dung với AI...");
-                const prompt = `
-Tạo bài đăng Fanpage hấp dẫn cho dự án: ${projectInfo.name || projectInfo.projectName}.
-Thông tin chi tiết: ${projectInfo.description}.
-Đối tượng khách hàng: Người dân, doanh nghiệp tại Thành phố Hồ Chí Minh.
-Ngôn ngữ: Tiếng Việt tự nhiên, thân thiện, phù hợp nội dung marketing.
-        `;
-                const aiResult = await model.generateContent(prompt);
-                const content = aiResult.response.text();
+                console.log("🔹 Đang tạo nội dung...");
+                const prompt = `Tạo bài Fanpage cho dự án: ${projectInfo.name || projectInfo.projectName}. Mô tả: ${projectInfo.description}. Đối tượng TPHCM, tiếng Việt thân thiện.`;
+                const content = (await model.generateContent(prompt)).response.text();
                 console.log("✅ Tạo nội dung thành công");
 
-                // Đăng lên Fanpage
-                console.log("🔹 Đang đăng bài lên Fanpage...");
+                // Đăng bài
+                console.log("🔹 Đang đăng bài...");
                 await axios.post(
                     `https://graph.facebook.com/v25.0/${projectInfo.pageId}/feed`,
                     null,
                     { params: { message: content, access_token: projectInfo.pageToken } }
                 );
-                console.log("✅ Đăng bài lên Fanpage thành công!");
+                console.log("✅ Đăng bài thành công!");
 
                 // Cập nhật trạng thái
-                await doc.ref.update({
+                await db.ref(`scheduled_posts/${postId}`).update({
                     isPosted: true,
                     postedAt: new Date().toISOString(),
                     generatedContent: content
                 });
-                console.log("✅ Cập nhật trạng thái bài đăng thành công");
+                console.log("✅ Cập nhật trạng thái thành công");
 
             } catch (err) {
                 console.error("❌ Lỗi xử lý bài:", err.response?.data?.error?.message || err.message);
-                await doc.ref.update({ lastError: err.message });
+                await db.ref(`scheduled_posts/${postId}`).update({ lastError: err.message });
             }
         }
 
     } catch (dbErr) {
-        console.error("❌ Lỗi truy vấn Firestore:", dbErr.message);
+        console.error("❌ Lỗi truy vấn CSDL:", dbErr.message);
         process.exit(1);
     }
 }
